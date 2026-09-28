@@ -90,3 +90,115 @@ def prompt_password_for(action: str, current_password: str) -> str:
     password = generate_password(length)
     print(f"Generated password: {password}")
     return password
+
+def cmd_add(vault: dict, key: bytes, service: str) -> None:
+    if service in vault["entries"]:
+        print(f"An entry for '{service}' already exists. Use 'update' instead.")
+        return
+    username = input("Username: ")
+    password = prompt_password_for("Password", current_password="")
+    vault["entries"][service] = crypto_utils.encrypt(key, f"{username}\n{password}")
+    auth.save_vault(vault)
+    print(f"Saved credentials for '{service}'.")
+
+
+def cmd_get(vault: dict, key: bytes, service: str) -> None:
+    token = vault["entries"].get(service)
+    if token is None:
+        print(f"No entry found for '{service}'.")
+        return
+    username, password = crypto_utils.decrypt(key, token).split("\n", 1)
+    print(f"Service:  {service}\nUsername: {username}\nPassword: {password}")
+
+
+def cmd_list(vault: dict) -> None:
+    if not vault["entries"]:
+        print("No entries stored.")
+        return
+    for service in sorted(vault["entries"]):
+        print(service)
+
+
+def cmd_search(vault: dict, term: str) -> None:
+    matches = sorted(s for s in vault["entries"] if term.lower() in s.lower())
+    print("\n".join(matches) if matches else "No matching entries.")
+
+
+def cmd_update(vault: dict, key: bytes, service: str) -> None:
+    if service not in vault["entries"]:
+        print(f"No entry found for '{service}'.")
+        return
+    current_username, current_password = crypto_utils.decrypt(
+        key, vault["entries"][service]
+    ).split("\n", 1)
+    username = input(f"Username [{current_username}]: ").strip() or current_username
+    password = prompt_password_for("New password", current_password=current_password)
+    vault["entries"][service] = crypto_utils.encrypt(key, f"{username}\n{password}")
+    auth.save_vault(vault)
+    print(f"Updated credentials for '{service}'.")
+
+
+def cmd_delete(vault: dict, service: str) -> None:
+    if service not in vault["entries"]:
+        print(f"No entry found for '{service}'.")
+        return
+    del vault["entries"][service]
+    auth.save_vault(vault)
+    print(f"Deleted entry for '{service}'.")
+
+
+def run_session(key: bytes) -> None:
+    vault = auth.load_vault()
+    print(HELP_TEXT)
+
+    while True:
+        try:
+            raw = read_command("\npwmgr> ").strip()
+        except InactivityTimeout:
+            print("\nVault locked due to inactivity.")
+            key = login("Re-enter master password to unlock: ")
+            vault = auth.load_vault()
+            continue
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting.")
+            return
+
+        if not raw:
+            continue
+        cmd, *args = raw.split()
+        cmd = cmd.lower()
+
+        if cmd in ("exit", "quit"):
+            return
+        elif cmd == "help":
+            print(HELP_TEXT)
+        elif cmd == "lock":
+            print("Vault locked.")
+            key = login("Re-enter master password to unlock: ")
+            vault = auth.load_vault()
+        elif cmd == "add":
+            cmd_add(vault, key, args[0]) if args else print("Usage: add <service>")
+        elif cmd == "get":
+            cmd_get(vault, key, args[0]) if args else print("Usage: get <service>")
+        elif cmd == "list":
+            cmd_list(vault)
+        elif cmd == "search":
+            cmd_search(vault, args[0]) if args else print("Usage: search <term>")
+        elif cmd == "update":
+            cmd_update(vault, key, args[0]) if args else print("Usage: update <service>")
+        elif cmd == "delete":
+            cmd_delete(vault, args[0]) if args else print("Usage: delete <service>")
+        elif cmd == "generate":
+            length = int(args[0]) if args and args[0].isdigit() else 16
+            print(generate_password(length))
+        else:
+            print(f"Unknown command: '{cmd}'. Type 'help' for options.")
+
+
+def main():
+    key = register_vault() if not auth.vault_exists() else login()
+    run_session(key)
+
+
+if __name__ == "__main__":
+    main()
