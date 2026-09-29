@@ -8,6 +8,7 @@ import secrets
 import signal
 
 import auth
+import crypto_utils
 
 MAX_PASSWORD_ATTEMPTS = 3
 AUTO_LOCK_SECONDS = 60
@@ -47,8 +48,10 @@ def prompt_new_master_password() -> str:
         remaining = MAX_PASSWORD_ATTEMPTS - attempt
         if remaining:
             print(f"Unfortunately, passwords do not match. {remaining} attempt(s) left.")
+            continue
         print("Passwords do not match and you have used all remaining attempts.")
         sys.exit(1)
+
 
 def login(prompt_text: str = "Master password: ") -> bytes:
     for attempt in range(1, MAX_PASSWORD_ATTEMPTS + 1):
