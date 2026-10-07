@@ -1,13 +1,18 @@
 # Lab 1
 
-# allows for the password to be hiddenly typed
+# Hides terminal input while typing passwords
 import getpass
+# Provides character sets
 import string
+# Used for terminating the process via sys.exit()
 import sys
+# Cryptographically secure random number generator
 import secrets
+# Used to implement UNIX timers for auto-lock
 import signal
-
+# Authentication module
 import auth
+import crypto_utils
 import crypto_utils
 
 MAX_PASSWORD_ATTEMPTS = 3
@@ -31,14 +36,19 @@ Commands:
 class InactivityTimeout(Exception):
     """Raised when no command is entered within AUTO_LOCK_SECONDS."""
 
-
+# Raises inactivity timeout
 def _on_alarm(signum, frame):
     raise InactivityTimeout
 
+# Concatenates text, numbers, and punctuation, and then picks random characters
+# from that pool.
 def generate_password(length: int = 16) -> str:
     alphabet = string.ascii_letters + string.digits + string.punctuation
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
+# Used during initial setup. Loops up to MAX_PASSWORD_ATTEMPTS times, 
+# asking for a master password and confirmation via getpass. If both entries 
+# match, it returns the password, otherwise it exits.
 def prompt_new_master_password() -> str:
     for attempt in range(1, MAX_PASSWORD_ATTEMPTS + 1):
         password = getpass.getpass("Master Password: ")
@@ -52,7 +62,7 @@ def prompt_new_master_password() -> str:
         print("Passwords do not match and you have used all remaining attempts.")
         sys.exit(1)
 
-
+# Loops up to MAX_PASSWORD_ATTEMPTS prompting for the master password
 def login(prompt_text: str = "Master password: ") -> bytes:
     for attempt in range(1, MAX_PASSWORD_ATTEMPTS + 1):
         password = getpass.getpass(prompt_text)
@@ -65,14 +75,19 @@ def login(prompt_text: str = "Master password: ") -> bytes:
     print("Unforunately, there have been too many failed attempts. Exiting.")
     sys.exit(1)
 
-
+# Initializes a new password. 
 def register_vault() -> bytes:
     print("No vault found. Let's create one.")
     password = prompt_new_master_password()
+
+    # Verifies the vault doesn't exist, generaters salt, and derives the
+    # key, which is then Base64-encoded to satisfy Fernet requirements
     key = auth.register(password)
     print("Vault created successfully.\n")
     return key
 
+# Schedules an alarm for 60 seconds for the auto-lock feature,
+# resets to 0 once input is received.
 def read_command(prompt_text: str) -> str:
     signal.signal(signal.SIGALRM, _on_alarm)
     signal.alarm(AUTO_LOCK_SECONDS)
@@ -82,6 +97,8 @@ def read_command(prompt_text: str) -> str:
         signal.alarm(0)
 
 
+# Asks if the user wants to generate a random password. If so,
+# it prompts for length (default of 16) and generates one.
 def prompt_password_for(action: str, current_password: str) -> str:
     choice = input(f"Generate a random password? [y/N]: ").strip().lower()
     if choice != "y":
@@ -94,6 +111,10 @@ def prompt_password_for(action: str, current_password: str) -> str:
     print(f"Generated password: {password}")
     return password
 
+
+# Ensures the service name is not already present, prompts for username and 
+# password. Then, it concatenates them together, encrypts it with Fernet, and 
+# stores the token in the vault
 def cmd_add(vault: dict, key: bytes, service: str) -> None:
     if service in vault["entries"]:
         print(f"An entry for '{service}' already exists. Use 'update' instead.")
@@ -104,7 +125,8 @@ def cmd_add(vault: dict, key: bytes, service: str) -> None:
     auth.save_vault(vault)
     print(f"Saved credentials for '{service}'.")
 
-
+# Fetches the encrypted token for "service" from vault["entries"]. Then,
+# it decrypts the token and splits the username and password
 def cmd_get(vault: dict, key: bytes, service: str) -> None:
     token = vault["entries"].get(service)
     if token is None:
@@ -113,7 +135,7 @@ def cmd_get(vault: dict, key: bytes, service: str) -> None:
     username, password = crypto_utils.decrypt(key, token).split("\n", 1)
     print(f"Service:  {service}\nUsername: {username}\nPassword: {password}")
 
-
+# Prints all service keys stored in the vault in alphabetical order
 def cmd_list(vault: dict) -> None:
     if not vault["entries"]:
         print("No entries stored.")
@@ -121,12 +143,14 @@ def cmd_list(vault: dict) -> None:
     for service in sorted(vault["entries"]):
         print(service)
 
-
+# Searches over service names and prints matches (case-insensitive)
 def cmd_search(vault: dict, term: str) -> None:
     matches = sorted(s for s in vault["entries"] if term.lower() in s.lower())
     print("\n".join(matches) if matches else "No matching entries.")
 
-
+# Decrypts the existing entry to read the current username and password. Then,
+# it prompts for new values (keeping old ones as defaults if left blank). Lastly,
+# it re-encrypts and saves the updated entry to disk.
 def cmd_update(vault: dict, key: bytes, service: str) -> None:
     if service not in vault["entries"]:
         print(f"No entry found for '{service}'.")
@@ -140,7 +164,7 @@ def cmd_update(vault: dict, key: bytes, service: str) -> None:
     auth.save_vault(vault)
     print(f"Updated credentials for '{service}'.")
 
-
+# Deletes the service key from the vault
 def cmd_delete(vault: dict, service: str) -> None:
     if service not in vault["entries"]:
         print(f"No entry found for '{service}'.")
@@ -149,11 +173,12 @@ def cmd_delete(vault: dict, service: str) -> None:
     auth.save_vault(vault)
     print(f"Deleted entry for '{service}'.")
 
-
+# Loads the vault dictionary and enters the main command loop.
 def run_session(key: bytes) -> None:
     vault = auth.load_vault()
     print(HELP_TEXT)
 
+    
     while True:
         try:
             raw = read_command("\npwmgr> ").strip()
@@ -166,6 +191,7 @@ def run_session(key: bytes) -> None:
             print("\nExiting.")
             return
 
+        # Splits input into command and arguments
         if not raw:
             continue
         cmd, *args = raw.split()
@@ -198,6 +224,7 @@ def run_session(key: bytes) -> None:
             print(f"Unknown command: '{cmd}'. Type 'help' for options.")
 
 
+# Checks if a vault exists, if not triggers register_vault()
 def main():
     key = register_vault() if not auth.vault_exists() else login()
     run_session(key)
