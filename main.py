@@ -12,6 +12,7 @@ import secrets
 import signal
 # Authentication module
 import auth
+import crypto_utils
 
 MAX_PASSWORD_ATTEMPTS = 3
 AUTO_LOCK_SECONDS = 60
@@ -72,7 +73,7 @@ def login(prompt_text: str = "Master password: ") -> bytes:
     print("Unforunately, there have been too many failed attempts. Exiting.")
     sys.exit(1)
 
-# Initializes a new password . 
+# Initializes a new password. 
 def register_vault() -> bytes:
     print("No vault found. Let's create one.")
     password = prompt_new_master_password()
