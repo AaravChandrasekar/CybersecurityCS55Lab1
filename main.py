@@ -13,7 +13,6 @@ import signal
 # Authentication module
 import auth
 import crypto_utils
-import crypto_utils
 
 MAX_PASSWORD_ATTEMPTS = 3
 AUTO_LOCK_SECONDS = 60
@@ -48,7 +47,7 @@ def generate_password(length: int = 16) -> str:
 
 # Used during initial setup. Loops up to MAX_PASSWORD_ATTEMPTS times, 
 # asking for a master password and confirmation via getpass. If both entries 
-# match, it returns the password, otherwise it exits.
+# match, it returns the password, otherwise it exits after MAX_PASSWORD_ATTEMPTS.
 def prompt_new_master_password() -> str:
     for attempt in range(1, MAX_PASSWORD_ATTEMPTS + 1):
         password = getpass.getpass("Master Password: ")
@@ -62,7 +61,8 @@ def prompt_new_master_password() -> str:
         print("Passwords do not match and you have used all remaining attempts.")
         sys.exit(1)
 
-# Loops up to MAX_PASSWORD_ATTEMPTS prompting for the master password
+# Loops up to MAX_PASSWORD_ATTEMPTS prompting for the master password,
+# and returns the key
 def login(prompt_text: str = "Master password: ") -> bytes:
     for attempt in range(1, MAX_PASSWORD_ATTEMPTS + 1):
         password = getpass.getpass(prompt_text)
@@ -72,21 +72,18 @@ def login(prompt_text: str = "Master password: ") -> bytes:
             remaining = MAX_PASSWORD_ATTEMPTS - attempt
             suffix = f" {remaining} attempt(s) left." if remaining else ""
             print(f"Error: {e}{suffix}")
-    print("Unforunately, there have been too many failed attempts. Exiting.")
+    print("Unfortunately, there have been too many failed attempts. Exiting.")
     sys.exit(1)
 
-# Initializes a new password. 
+# Initializes a new vault
 def register_vault() -> bytes:
     print("No vault found. Let's create one.")
     password = prompt_new_master_password()
-
-    # Verifies the vault doesn't exist, generaters salt, and derives the
-    # key, which is then Base64-encoded to satisfy Fernet requirements
     key = auth.register(password)
     print("Vault created successfully.\n")
     return key
 
-# Schedules an alarm for 60 seconds for the auto-lock feature,
+# Schedules an alarm for AUTO_LOCK_SECONDS for the auto-lock feature,
 # resets to 0 once input is received.
 def read_command(prompt_text: str) -> str:
     signal.signal(signal.SIGALRM, _on_alarm)
@@ -191,9 +188,9 @@ def run_session(key: bytes) -> None:
             print("\nExiting.")
             return
 
-        # Splits input into command and arguments
         if not raw:
             continue
+        # Splits input into command and arguments
         cmd, *args = raw.split()
         cmd = cmd.lower()
 
