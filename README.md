@@ -8,6 +8,13 @@ pip install -r requirements.txt
 python main.py
 ```
 
+If a storage.json already exists:
+```
+pip install -r requirements.txt
+rm storage.json
+python main.py
+```
+
 
 ## File Descriptions
 - **`main.py`** - Handles the command line, including the prompt loop, user commands, login attempts, and the auto-lock timer.
